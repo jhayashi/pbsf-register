@@ -75,6 +75,7 @@
   .nav{display:flex;gap:10px;margin-top:16px}
   button{padding:12px;border:0;border-radius:10px;font-size:.95rem;font-weight:700;cursor:pointer}
   .primary{background:var(--cobalt);color:#fff;flex:2} .primary:disabled{background:#c1c8d6;cursor:not-allowed}
+  a.btnlink{display:block;padding:12px;border-radius:10px;font-size:.95rem;font-weight:700;text-align:center;text-decoration:none}
   .ghost{background:#eef1f6;color:var(--ink);flex:1}
   .chk{display:flex;gap:9px;align-items:flex-start;font-size:.85rem}
   .chk input{width:auto;margin-top:2px}
@@ -398,9 +399,17 @@ function boot(){
     CFG=c;
     renderBanner();
     if(c.formVersion!==FORM_VERSION){
-      stage.innerHTML='<h2>This form is out of date</h2><p class="sub">You may be viewing a '+
-        'saved copy. Please start again from <a href="https://register.piedmontbaseball.org/">'+
-        'register.piedmontbaseball.org</a>.</p>';
+      var framed=true; try{ framed=(window.top!==window.self); }catch(e){}
+      var store=null; try{ store=window.sessionStorage; }catch(e){}
+      var fwd=staleFormForward({ framed:framed, search:location.search, storage:store,
+                                 env:ENV, explicit:ENV_EXPLICIT, nowMs:Date.now() });
+      if(fwd){
+        stage.innerHTML='<h2>Opening the current form…</h2><p class="sub">This copy is out of '+
+          'date. If nothing happens, <a href="'+fwd+'">open the current form</a>.</p>';
+        location.replace(fwd);
+        return;
+      }
+      stage.innerHTML=staleFormScreen();
       return;
     }
     if(!CFG.open){
@@ -415,6 +424,48 @@ function boot(){
     stage.innerHTML='<h2>Registration is temporarily unavailable</h2>'+
       '<p class="sub">We could not load current fees. Please try again in a few minutes.</p>';
   });
+}
+
+/* Issue #42: a stale copy -- its FORM_VERSION no longer matches the backend's -- sends the
+   family to the current form on load, before they have typed anything, instead of
+   dead-ending them (PBSF Registrar, 2026-10-27). The submit-time check in Code.gs still only
+   returns its message: by then the family has typed everything, and forwarding would lose it.
+   - TOP LEVEL ONLY. Framed in the Wix embed, location.replace would load the live form inside
+     a test-mode embed; there the message carries a target=_top button instead, which a click
+     is allowed to use to leave the frame.
+   - AT MOST ONCE. The forward adds fwd=<ms>, which also gets past the browser's and the CDN's
+     caches (Pages serves max-age=600, so a plain reload can hand back this same stale copy).
+     A page that arrives with fwd=, or inside the session guard, shows the message instead of
+     forwarding again: right after a version bump, before the new form is published, every copy
+     is stale, and a second hop would be a loop. Storage that throws (some private modes)
+     means no forward at all -- a message is never worse than a loop.
+   - Explicit test mode (env=test, and now=) survives the hop, so a tester stays in the
+     sandbox; anything else lands on the plain, live address.
+   Returns the URL to replace() to, or null to show staleFormScreen(). */
+var CURRENT_FORM_URL='https://register.piedmontbaseball.org/';
+function staleFormForward(o){
+  if(o.framed||!o.storage) return null;
+  var qs=new URLSearchParams(o.search||'');
+  if(qs.get('fwd')) return null;
+  try{
+    var last=Number(o.storage.getItem('pbsfStaleForward')||0);
+    if(last&&o.nowMs-last<30*60*1000) return null;
+    o.storage.setItem('pbsfStaleForward',String(o.nowMs));
+  }catch(e){ return null; }
+  var q=[];
+  if(o.env==='test'&&o.explicit){
+    q.push('env=test');
+    if(qs.get('now')) q.push('now='+encodeURIComponent(qs.get('now')));
+  }
+  q.push('fwd='+o.nowMs);
+  return CURRENT_FORM_URL+'?'+q.join('&');
+}
+function staleFormScreen(){
+  return '<h2>This form is out of date</h2><p class="sub">You may be viewing a saved copy. '+
+    'Please start again from <a href="'+CURRENT_FORM_URL+'" target="_top">'+
+    'register.piedmontbaseball.org</a>.</p>'+
+    '<div class="nav"><a class="primary btnlink" href="'+CURRENT_FORM_URL+'" target="_top">'+
+    'Go to the current form</a></div>';
 }
 
 function renderBanner(){
