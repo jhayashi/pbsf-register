@@ -401,15 +401,16 @@ function boot(){
     if(c.formVersion!==FORM_VERSION){
       var framed=true; try{ framed=(window.top!==window.self); }catch(e){}
       var store=null; try{ store=window.sessionStorage; }catch(e){}
+      var home=(location.hostname===TEST_HOST)?TEST_FORM_URL:CURRENT_FORM_URL;
       var fwd=staleFormForward({ framed:framed, search:location.search, storage:store,
-                                 env:ENV, explicit:ENV_EXPLICIT, nowMs:Date.now() });
+                                 env:ENV, explicit:ENV_EXPLICIT, nowMs:Date.now(), formUrl:home });
       if(fwd){
         stage.innerHTML='<h2>Opening the current form…</h2><p class="sub">This copy is out of '+
           'date. If nothing happens, <a href="'+fwd+'">open the current form</a>.</p>';
         location.replace(fwd);
         return;
       }
-      stage.innerHTML=staleFormScreen();
+      stage.innerHTML=staleFormScreen(home);
       return;
     }
     if(!CFG.open){
@@ -443,6 +444,7 @@ function boot(){
      sandbox; anything else lands on the plain, live address.
    Returns the URL to replace() to, or null to show staleFormScreen(). */
 var CURRENT_FORM_URL='https://register.piedmontbaseball.org/';
+var TEST_FORM_URL='https://register-test.piedmontbaseball.org/';   // a stale DEV copy goes here
 function staleFormForward(o){
   if(o.framed||!o.storage) return null;
   var qs=new URLSearchParams(o.search||'');
@@ -458,13 +460,14 @@ function staleFormForward(o){
     if(qs.get('now')) q.push('now='+encodeURIComponent(qs.get('now')));
   }
   q.push('fwd='+o.nowMs);
-  return CURRENT_FORM_URL+'?'+q.join('&');
+  return (o.formUrl||CURRENT_FORM_URL)+'?'+q.join('&');
 }
-function staleFormScreen(){
+function staleFormScreen(formUrl){
+  var u=formUrl||CURRENT_FORM_URL;
   return '<h2>This form is out of date</h2><p class="sub">You may be viewing a saved copy. '+
-    'Please start again from <a href="'+CURRENT_FORM_URL+'" target="_top">'+
-    'register.piedmontbaseball.org</a>.</p>'+
-    '<div class="nav"><a class="primary btnlink" href="'+CURRENT_FORM_URL+'" target="_top">'+
+    'Please start again from <a href="'+u+'" target="_top">'+
+    u.replace(/^https:\/\/|\/$/g,'')+'</a>.</p>'+
+    '<div class="nav"><a class="primary btnlink" href="'+u+'" target="_top">'+
     'Go to the current form</a></div>';
 }
 
@@ -477,8 +480,8 @@ function renderBanner(){
   el.style.borderBottomColor=unset?'#f3c4ad':'#f0e2b8';
   el.textContent=unset
     ? '⚠ ENVIRONMENT NOT SET — running in TEST MODE. Registrations here do not count.'
-    : '🧪 TEST MODE'+(NOW_OVERRIDE?' — simulating '+NOW_OVERRIDE:'')+
-      ' — registrations here do not count.';
+    : '🧪 '+(location.hostname===TEST_HOST?'TEST SITE (development version) — ':'')+'TEST MODE'+
+      (NOW_OVERRIDE?' — simulating '+NOW_OVERRIDE:'')+' — registrations here do not count.';
 }
 /* Must match cfg.formVersion from the backend. The Wix embed URL is content-hashed,
    so editing this file mints a new URL while the old one keeps serving old code
@@ -497,7 +500,13 @@ var QS=new URLSearchParams(location.search);
    filesusr link, a github.io preview -- a missing env still means TEST behind the red
    banner, as it always has. An explicit env= wins on every host. */
 var LIVE_HOST='register.piedmontbaseball.org';
+/* register-test.piedmontbaseball.org is the development site: a copy of this file, published
+   from the `dev` branch with BACKEND_URL pointing at a separate DEV backend that holds only
+   Stripe's TEST key and its own sheet. On that host the form is ALWAYS in test mode, whatever
+   the address says, so a development version can never ask for live mode. */
+var TEST_HOST='register-test.piedmontbaseball.org';
 function resolveFormEnv(env,host){
+  if(host===TEST_HOST) return {env:'test',explicit:true};
   if(env==='prod'||env==='test') return {env:env,explicit:true};
   if(!env&&host===LIVE_HOST) return {env:'prod',explicit:true};
   return {env:'test',explicit:false};
