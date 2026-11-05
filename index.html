@@ -898,10 +898,9 @@ function entryCount(){ return s.players.reduce(function(t,p){ return t+pEntries(
 function divFull(d){ return !!(CFG&&CFG.capacity&&CFG.capacity.full&&CFG.capacity.full[d]===true); }
 /* PBSF Registrar's wording (2026-11-05, t4524): why it is full, that places do open, what
    paying does, and what happens if none opens. "Registration fee", not "full refund": an
-   unplaced child gets their own fee back, and the processing fee only when nobody in the
-   registration got a place (D12), so "full" would overpromise to a family with a placed
-   sibling. The date is Opening Day, backfillUntil; without it (an older backend) the
-   sentence still reads. */
+   unplaced child gets their own registration fee back and the processing fee is kept
+   (D12, reversed 2026-11-05). The date is Opening Day, backfillUntil; without it (an
+   older backend) the sentence still reads. */
 function fullNotice(p,d){
   var dv=esc(divLabel(d)), f=p.first?esc(p.first):'';
   return '<div class="fullmsg"><b>'+dv+' is full</b> because of the field space we have this '+
