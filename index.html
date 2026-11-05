@@ -282,13 +282,18 @@ function showReceipt(stage, data){
            '<span>'+money(p.listFee)+'</span></div>';
   }).join('');
   /* One line per program. No position and no count, as in the email (D4). */
+  /* The confirmation email's wording (t4524), shortened: the registration fee comes back
+     if no place opens by Opening Day, or sooner on request. first is newer than name; an
+     older backend's receipt falls back to the full name. */
   var until=data.backfillUntilLabel?' ('+esc(data.backfillUntilLabel)+')':'';
   var where=ps.map(function(p){
-    var who='<b>'+esc(p.name)+' &mdash; '+esc(divLabel(p.division))+': ';
+    var who='<b>'+esc(p.name)+' &mdash; '+esc(divLabel(p.division))+': ', f=esc(p.first||p.name);
     return placed(p)?'<p>'+who+'registered.</b></p>'
-      :'<p>'+who+'on the waitlist.</b> If a place opens we&rsquo;ll email you. If not, '+
-       'we&rsquo;ll refund what you paid for it after Opening Day'+until+', or sooner if '+
-       'you ask.</p>';
+      :'<p>'+who+'on the waitlist.</b> We expect places to open up, mostly in January and '+
+       'February as teams and schedules are set. If a place opens for '+f+', we&rsquo;ll '+
+       'email you, and there&rsquo;s nothing more you need to do. If no place opens by '+
+       'Opening Day'+until+', we&rsquo;ll refund '+f+'&rsquo;s registration fee. If you&rsquo;d '+
+       'rather not wait, email us and we&rsquo;ll refund it sooner.</p>';
   }).join('');
   var a=data.amounts||{};
   function row(label,cents){ return cents>0
@@ -494,19 +499,23 @@ function ackList(r){
    count, a cap or a position (D4). Shared by the submit and the resume screens, which add
    their own buttons. */
 function filledUpHtml(list){
-  var divs=[], lines='';
+  var divs=[], kids=[], lines='';
   for(var i=0;i<list.length;i++){ var x=list[i]||{};
     if(divs.indexOf(x.division)<0) divs.push(x.division);
+    if(kids.indexOf(x.first)<0) kids.push(x.first);
     lines+='<div>'+esc(x.first)+' will be on the waitlist for <b>'+
       esc(divLabel(x.division))+'</b>.</div>';
   }
-  var names=divs.map(function(d){ return esc(divLabel(d)); });
-  var head=names.length>1?names.slice(0,-1).join(', ')+' and '+names[names.length-1]+
-    ' have':names[0]+' has';
-  return '<h2>'+head+' just filled up</h2>'+
+  var dl=andList(divs.map(divLabel)), many=divs.length>1;
+  var whose=kids.length>1?'the registration fee for '+andList(kids)
+    :esc(kids[0])+'&rsquo;s registration fee';
+  return '<h2>'+dl+(many?' have':' has')+' just filled up</h2>'+
     '<div class="fullmsg">'+lines+'</div>'+
-    '<p class="sub">If you continue, you pay in full now. If a place opens we&rsquo;ll '+
-    'email you, and if no place opens you&rsquo;ll be refunded.</p>';
+    '<p class="sub">'+dl+(many?' are':' is')+' full because of the field space we have this '+
+    'season, and we expect places to open up as families&rsquo; plans change. If you '+
+    'continue, you pay in full now. If a place opens, we&rsquo;ll email you, and you '+
+    'won&rsquo;t need to do anything else. If no place opens by '+openingDay()+
+    ', we&rsquo;ll refund '+whose+'.</p>';
 }
 
 function boot(){
@@ -887,9 +896,30 @@ function entryCount(){ return s.players.reduce(function(t,p){ return t+pEntries(
    means not full; the server decides at submit either way, and says so with
    needsWaitlistAck if a division filled after this page loaded. ---- */
 function divFull(d){ return !!(CFG&&CFG.capacity&&CFG.capacity.full&&CFG.capacity.full[d]===true); }
+/* PBSF Registrar's wording (2026-11-05, t4524): why it is full, that places do open, what
+   paying does, and what happens if none opens. "Registration fee", not "full refund": an
+   unplaced child gets their own fee back, and the processing fee only when nobody in the
+   registration got a place (D12), so "full" would overpromise to a family with a placed
+   sibling. The date is Opening Day, backfillUntil; without it (an older backend) the
+   sentence still reads. */
 function fullNotice(p,d){
-  return '<div class="fullmsg">'+esc(divLabel(d))+' is full. If you continue, '+
-    (p.first?esc(p.first):'your child')+' will be on the waitlist.</div>';
+  var dv=esc(divLabel(d)), f=p.first?esc(p.first):'';
+  return '<div class="fullmsg"><b>'+dv+' is full</b> because of the field space we have this '+
+    'season. <b>We expect places to open up</b> as families&rsquo; plans change. If '+
+    (f||'your child')+' wants to play, finish registering and pay, and '+(f||'they')+
+    ' will go on the '+dv+' waitlist. If a place opens, we&rsquo;ll email you, and you '+
+    'won&rsquo;t need to do anything else. If no place opens by '+openingDay()+
+    ', we&rsquo;ll refund '+(f?f+'&rsquo;s':'your child&rsquo;s')+' registration fee.</div>';
+}
+/* "Opening Day (Saturday, March 6)": the config GET's label, HTML-escaped. */
+function openingDay(){
+  var l=CFG&&CFG.capacity&&CFG.capacity.backfillUntilLabel;
+  return 'Opening Day'+(l?' ('+esc(l)+')':'');
+}
+/* "Sam", "Sam and Ella", "Sam, Ella and Max", each name escaped. */
+function andList(a){
+  var e=a.map(function(x){ return esc(x); });
+  return e.length>1?e.slice(0,-1).join(', ')+' and '+e[e.length-1]:(e[0]||'');
 }
 /* What the review step asks the family to acknowledge: one entry per child per full
    division. key ties a tick to the child and division it was given for, not to a list
@@ -930,8 +960,8 @@ function waitAckBoxes(){
     h+='<label class="supportbox"><input type="checkbox" data-wack="'+w[k].i+'" value="'+
       esc(w[k].division)+'"'+reqAttr(true)+(s.waitAck&&s.waitAck[w[k].key]?' checked':'')+'>'+
       '<span class="sbtext">I understand <b>'+esc(w[k].first)+'</b> is on the waitlist for <b>'+
-      esc(divLabel(w[k].division))+'</b>. I&rsquo;m paying in full now and will be refunded '+
-      'if no place opens.</span></label>';
+      esc(divLabel(w[k].division))+'</b>. I&rsquo;m paying in full now. If no place opens by '+
+      openingDay()+', '+esc(w[k].first)+'&rsquo;s registration fee will be refunded.</span></label>';
   }
   return h+'</div>';
 }
